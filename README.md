@@ -53,39 +53,17 @@ Quien invite necesita permiso de **Gestionar servidor**. Intents en el portal: M
 
 ## Autohospedaje
 
-Hace falta Python 3.12+, [FFmpeg](https://ffmpeg.org/) y un token de bot. Copia `.env.example` a `.env` y pon `DISCORD_TOKEN` (nunca lo subas a git).
+Producción corre en **Azure Container Apps** (Azure for Students: crédito sin tarjeta y con límite de gasto) y se despliega sola desde `main` (ver CI/CD).
+
+Para desarrollar en tu PC hace falta Python 3.13, [FFmpeg](https://ffmpeg.org/) y un token de un **bot de pruebas** (no uses el de producción o responderán dos bots). Copia `.env.example` a `.env`:
 
 ```bash
 python -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt   # Windows
+.venv/Scripts/python.exe -m pip install -r requirements-dev.txt   # Windows
 python bot.py
 ```
 
-En Windows también puedes usar `run_bot.bat`.
-
-### Azure for Students (recomendado, 0 USD en tarjeta)
-
-Suscripción **Azure for Students**: 100 USD de crédito / 12 meses, **sin tarjeta**, renovable mientras estudies. Tiene **límite de gasto**: si el crédito se acaba, los recursos se paran; no te facturan.
-
-Con Container Apps (0.25 vCPU, 0.5 GiB, 1 réplica siempre encendida) el crédito suele durar **unos 6–12 meses** de Sesame 24/7, según cuánto suene música (eso pasa el CPU a tarifa “activa”). Luego renuevas el pack de estudiante y vuelves a tener 100 USD.
-
-No actives Application Insights, no crees VMs extra, no pases a *pay-as-you-go*.
-
-### Docker (24/7)
-
-```bash
-docker build -t sesame-bot .
-docker run --env-file .env sesame-bot
-```
-
-### Railway
-
-`railway.json` deja **1 réplica**, tope **0.12 vCPU** y **256 MB**. Al máximo 24/7 eso ronda **5 USD** de uso (RAM ~2.56 + CPU ~2.40). No generes dominio.
-
-- **Free** (0 USD, sin tarjeta): 1 USD de uso al mes. Si se acaba, el bot se apaga; no hay cobro extra.
-- **Hobby** (5 USD/mes en tarjeta): incluye 5 USD de uso. Con estos topes no debería haber extras. En **Workspace → Usage** pon alerta a **5 USD** y hard limit al mínimo de Railway (suele ser 10 USD).
-
-Pasos: New project → GitHub `sesame-bot` → variable `DISCORD_TOKEN` → 1 réplica. Cuando esté `Conectado como Sesame`, apaga el bot de tu PC.
+O con Docker: `docker build -t sesame-bot . && docker run --env-file .env sesame-bot`
 
 ## Seguridad y control de costos
 
@@ -97,7 +75,7 @@ Pasos: New project → GitHub `sesame-bot` → variable `DISCORD_TOKEN` → 1 r�
 - **Servidores**: como máximo `MAX_GUILDS` (10). Con `ALLOWED_GUILD_IDS` puedes limitarlo a tus servidores; en cualquier otro se sale solo.
 - **Contenedor sin root**, token solo como secret de Azure y nunca en logs (se enmascara).
 
-Todos los límites se cambian con variables de entorno (ver `sesame/config.py` y `azure-containerapp.yaml`).
+Todos los límites se cambian con variables de entorno en Azure (lista y valores por defecto en `sesame/config.py`).
 
 ## CI/CD
 
