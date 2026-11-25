@@ -184,10 +184,12 @@ YDL_OPTS = {
     "quiet": True,
     "default_search": "ytsearch1",
     "no_warnings": True,
+    "cachedir": False,
+    "concurrent_fragment_downloads": 1,
 }
 FFMPEG_OPTS = {
     "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -nostdin",
-    "options": "-vn",
+    "options": "-vn -threads 1",
 }
 
 tts_channels: dict[int, int] = {}

@@ -68,18 +68,14 @@ docker build -t sesame-bot .
 docker run --env-file .env sesame-bot
 ```
 
-### Railway (plan Free, 0 USD de suscripción)
+### Railway
 
-El repo ya trae `Dockerfile` y `railway.json` (1 réplica, tope 256 MB, sin solapar deploys). Usa el plan **Free**: 1 USD de uso al mes, sin tarjeta. Si se acaba el crédito, el bot se apaga hasta el ciclo siguiente; **no te cobran de más**.
+`railway.json` deja **1 réplica**, tope **0.12 vCPU** y **256 MB**. Al máximo 24/7 eso ronda **5 USD** de uso (RAM ~2.56 + CPU ~2.40). No generes dominio.
 
-1. Entra en [railway.com](https://railway.com) con GitHub. Quédate en **Free** (no elijas Hobby a 5 USD).
-2. **New project → Deploy from GitHub repo → `sesame-bot`**.
-3. En el servicio: **Variables → New variable** → `DISCORD_TOKEN` = el token del bot (Settings → Bot en el Developer Portal).
-4. **No** pulses *Generate domain*: Sesame no es una web.
-5. **Settings → Deploy → Replica limits**: 0.5 vCPU y 256 MB si no los cogió `railway.json`.
-6. Cuando los logs digan `Conectado como Sesame`, **apaga el bot de tu PC** (si corren los dos, cada comando se responde dos veces).
+- **Free** (0 USD, sin tarjeta): 1 USD de uso al mes. Si se acaba, el bot se apaga; no hay cobro extra.
+- **Hobby** (5 USD/mes en tarjeta): incluye 5 USD de uso. Con estos topes no debería haber extras. En **Workspace → Usage** pon alerta a **5 USD** y hard limit al mínimo de Railway (suele ser 10 USD).
 
-El WebSocket a Discord cuenta como tráfico de salida, así que en Free no debería dormirse. Un bot de música puede usar más de 100 MB de RAM; el crédito de 1 USD cubre ~100 MB 24/7. Si en **Metrics** ves 200 MB fijos, el crédito se agotará a mitad de mes y Sesame se parará hasta el mes siguiente.
+Pasos: New project → GitHub `sesame-bot` → variable `DISCORD_TOKEN` → 1 réplica. Cuando esté `Conectado como Sesame`, apaga el bot de tu PC.
 
 ## Aviso
 

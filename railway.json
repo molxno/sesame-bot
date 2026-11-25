@@ -12,7 +12,7 @@
     "restartPolicyMaxRetries": 10,
     "limitOverride": {
       "containers": {
-        "cpu": 0.5,
+        "cpu": 0.12,
         "memoryBytes": 268435456
       }
     }
