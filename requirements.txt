@@ -1,0 +1,5 @@
+discord.py[voice]>=2.7.1
+gTTS>=2.5
+yt-dlp
+python-dotenv
+audioop-lts

@@ -1,0 +1,10 @@
+.venv
+.env
+bot.log
+.git
+__pycache__
+*.pyc
+assets
+README.md
+LICENSE
+run_bot.bat
