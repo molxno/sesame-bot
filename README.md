@@ -82,9 +82,9 @@ Todos los límites se cambian con variables de entorno en Azure (lista y valores
 Un solo workflow (`.github/workflows/ci-cd.yml`), con Git Flow ([CONTRIBUTING.md](CONTRIBUTING.md)):
 
 1. **PR** a `develop` o `main`: valida el nombre de la rama y corre los tests.
-2. **Merge a `main`**: tests → imagen `ghcr.io/molxno/sesame-bot:v1.<número>` + **Release `v1.<número>`** con notas automáticas → **despliegue en Azure** (revisión `sesame--v1-<número>-1`).
+2. **Merge a `main`**: tests → imagen `ghcr.io/molxno/sesame-bot:v1.<número>` + **Release `v1.<número>`** con notas automáticas → **despliegue en Azure**.
 
-Una sola versión une todo: la Release y su tag de git, la imagen en GHCR y la revisión en Azure. Para volver atrás, en Azure pon la imagen de una Release anterior.
+Una sola versión une todo: la Release y su tag de git, la imagen en GHCR y lo que corre en Azure (el log dice `versión=v1.<número>`). Para volver atrás, en Azure pon la imagen de una Release anterior.
 
 El despliegue usa OIDC (sin contraseñas guardadas). Configuración única: ejecuta `scripts/azure-setup-cicd.sh` en Azure Cloud Shell y crea las 3 variables que imprime en **Settings → Secrets and variables → Actions → Variables**. Mientras no existan, el pipeline publica la imagen pero no despliega.
 
