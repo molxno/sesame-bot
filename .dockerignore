@@ -10,3 +10,4 @@ LICENSE
 run_bot.bat
 bot.log
 railway.json
+azure-containerapp.yaml

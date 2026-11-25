@@ -1,0 +1,25 @@
+# Referencia para Azure Container Apps (plan Consumption).
+# Mínimo 1 réplica para que Discord no se desconecte. Sin ingress público.
+# CPU 0.25 / 0.5 GiB es el tamaño más pequeño del plan.
+# La suscripción Azure for Students tiene límite de gasto: no cobra tarjeta.
+
+properties:
+  configuration:
+    ingress:
+      external: false
+    activeRevisionsMode: Single
+  template:
+    containers:
+      - name: sesame
+        image: sesame-bot:latest
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+        env:
+          - name: LOG_LEVEL
+            value: INFO
+          - name: DISCORD_TOKEN
+            secretRef: discord-token
+    scale:
+      minReplicas: 1
+      maxReplicas: 1

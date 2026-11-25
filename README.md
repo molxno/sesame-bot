@@ -61,6 +61,14 @@ python bot.py
 
 En Windows también puedes usar `run_bot.bat`.
 
+### Azure for Students (recomendado, 0 USD en tarjeta)
+
+Suscripción **Azure for Students**: 100 USD de crédito / 12 meses, **sin tarjeta**, renovable mientras estudies. Tiene **límite de gasto**: si el crédito se acaba, los recursos se paran; no te facturan.
+
+Con Container Apps (0.25 vCPU, 0.5 GiB, 1 réplica siempre encendida) el crédito suele durar **unos 6–12 meses** de Sesame 24/7, según cuánto suene música (eso pasa el CPU a tarifa “activa”). Luego renuevas el pack de estudiante y vuelves a tener 100 USD.
+
+No actives Application Insights, no crees VMs extra, no pases a *pay-as-you-go*.
+
 ### Docker (24/7)
 
 ```bash
