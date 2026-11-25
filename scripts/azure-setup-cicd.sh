@@ -16,10 +16,14 @@ az identity create -g "$RG" -n "$IDENTITY" -l "$LOCATION" -o none --only-show-er
 CLIENT_ID=$(az identity show -g "$RG" -n "$IDENTITY" --query clientId -o tsv)
 PRINCIPAL_ID=$(az identity show -g "$RG" -n "$IDENTITY" --query principalId -o tsv)
 
-az identity federated-credential create -g "$RG" --identity-name "$IDENTITY" -n github-main \
-  --issuer https://token.actions.githubusercontent.com \
-  --subject "repo:$REPO:ref:refs/heads/main" \
-  --audiences api://AzureADTokenExchange -o none --only-show-errors || true
+# GitHub puede firmar el token con el nombre del repo o con sus IDs inmutables: se registran ambos.
+IDS=$(curl -fsSL "https://api.github.com/repos/$REPO" | jq -r '"\(.owner.login)@\(.owner.id)/\(.name)@\(.id)"')
+for pair in "github-main|repo:$REPO:ref:refs/heads/main" "github-main-ids|repo:$IDS:ref:refs/heads/main"; do
+  az identity federated-credential create -g "$RG" --identity-name "$IDENTITY" -n "${pair%%|*}" \
+    --issuer https://token.actions.githubusercontent.com \
+    --subject "${pair#*|}" \
+    --audiences api://AzureADTokenExchange -o none --only-show-errors || true
+done
 
 RG_ID=$(az group show -n "$RG" --query id -o tsv)
 az role assignment create --assignee-object-id "$PRINCIPAL_ID" --assignee-principal-type ServicePrincipal \
