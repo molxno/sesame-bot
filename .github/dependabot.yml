@@ -1,15 +1,24 @@
-# Avisos automáticos de actualizaciones (parches de seguridad de librerías y Actions).
+# Actualizaciones de seguridad semanales. Van a develop (Git Flow) y salen a producción con el siguiente release.
 version: 2
 updates:
   - package-ecosystem: pip
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
   - package-ecosystem: docker
     directory: /
+    target-branch: develop
     schedule:
       interval: weekly
