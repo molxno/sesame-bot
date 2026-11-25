@@ -23,7 +23,7 @@
 
 Sesame es un bot **público y open source**. Cualquier persona puede añadirlo a su servidor. No hace falta instalar nada: pulsa **Invitar a Sesame**, elige el servidor y usa `/play` o `!help`.
 
-- Reproduce audio (búsqueda o enlace de YouTube).
+- Reproduce audio: busca por nombre (SoundCloud y, si falla, YouTube) o acepta enlaces de SoundCloud, YouTube, Spotify (canciones) y Bandcamp.
 - Lee el chat en voz alta (`!tts_on`) y **atenúa** la canción mientras habla.
 - Cola, volumen, skip y auto-salida si el canal se queda vacío.
 - Comandos con `!` y con `/`.
@@ -38,7 +38,7 @@ Quien invite necesita permiso de **Gestionar servidor**. Intents en el portal: M
 | Comando | Qué hace |
 | --- | --- |
 | `!help` / `/help` | Lista todos los comandos |
-| `!play <búsqueda o enlace>` / `/play` | Encola y reproduce |
+| `!play <canción o enlace>` / `/play` | Encola y reproduce |
 | `!skip` / `/skip` (`!next`, `!siguiente`) | Siguiente de la cola |
 | `!stop` / `/stop` | Para todo y vacía la cola |
 | `!queue` / `/queue` | Qué suena y qué sigue |
@@ -47,7 +47,9 @@ Quien invite necesita permiso de **Gestionar servidor**. Intents en el portal: M
 | `!leave` / `/leave` | Sale del canal de voz |
 | `!tts_on` / `/tts_on` | Lee este canal (baja la música) |
 | `!tts_off` / `/tts_off` | Deja de leer el chat |
-| `!test_audio` / `/test_audio` | Tono de 3 s |
+| `!test_audio` / `/test_audio` | Tono de 3 s (solo moderadores) |
+
+`skip`, `stop`, `volume`, `leave` y `tts_on/off` solo funcionan si estás en el mismo canal de voz que el bot (los moderadores pueden siempre).
 
 ## Autohospedaje
 
@@ -85,9 +87,34 @@ docker run --env-file .env sesame-bot
 
 Pasos: New project → GitHub `sesame-bot` → variable `DISCORD_TOKEN` → 1 réplica. Cuando esté `Conectado como Sesame`, apaga el bot de tu PC.
 
+## Seguridad y control de costos
+
+- **Enlaces en lista blanca**: solo SoundCloud, YouTube, Spotify (canciones) y Bandcamp. Cualquier otra URL se rechaza antes de tocar la red (evita SSRF hacia `localhost` o los metadatos de Azure). FFmpeg solo puede abrir protocolos de red.
+- **Sin menciones**: el bot nunca hace `@everyone` ni menciona a nadie, aunque el título de una canción lo intente.
+- **Anti-spam**: límites por usuario y por servidor para comandos, `play` y TTS; los avisos de "vas muy rápido" también están limitados para que el bot no se use para hacer spam.
+- **Trabajo pesado acotado**: búsquedas y TTS corren en grupos de hilos fijos con timeout; si se llenan, el bot responde "ocupado".
+- **Topes de consumo**: 3 servidores con voz a la vez, cola de 20, canciones de 15 min, salida por inactividad (5 min) o canal vacío (15 s), sin directos. El bot entra **ensordecido** (no recibe el audio de los demás: menos tráfico y menos costo en Azure).
+- **Servidores**: como máximo `MAX_GUILDS` (10). Con `ALLOWED_GUILD_IDS` puedes limitarlo a tus servidores; en cualquier otro se sale solo.
+- **Contenedor sin root**, token solo como secret de Azure y nunca en logs (se enmascara).
+
+Todos los límites se cambian con variables de entorno (ver `sesame/config.py` y `azure-containerapp.yaml`).
+
+## Actualizar en Azure
+
+Cada push a `main` pasa los tests y publica `ghcr.io/molxno/sesame-bot:v<número>` (el número de la ejecución en **Actions**). En Azure: **Containers → Properties → Image and tag** = `molxno/sesame-bot:v<número>` → **Save as a new revision**. En el Log stream verás `versión=v<número>`.
+
+## Desarrollo
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+Estructura: `sesame/config.py` (límites), `resolver.py` (fuentes y lista blanca), `audio.py` (FFmpeg, TTS, mezclador), `player.py` (cola por servidor), `cog.py` (comandos), `guards.py` (anti-spam), `dave.py` (cifrado de voz), `app.py` (bot).
+
 ## Aviso
 
-discord.py 2.7.1 no llama las transiciones de davey 0.2.0 (cifrado de voz DAVE). `bot.py` incluye un puente para eso.
+discord.py 2.7.1 no llama las transiciones de davey 0.2.0 (cifrado de voz DAVE). `sesame/dave.py` incluye un puente para eso.
 
 ## Licencia
 

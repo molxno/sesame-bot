@@ -11,7 +11,7 @@ properties:
   template:
     containers:
       - name: sesame
-        image: ghcr.io/molxno/sesame-bot:latest
+        image: ghcr.io/molxno/sesame-bot:v<número>
         resources:
           cpu: 0.25
           memory: 0.5Gi
@@ -29,6 +29,11 @@ properties:
             value: "900"
           - name: IDLE_LEAVE_SECONDS
             value: "300"
+          - name: MAX_GUILDS
+            value: "10"
+          # Opcional: solo tus servidores, separados por comas
+          # - name: ALLOWED_GUILD_IDS
+          #   value: "1528586575003516958"
     scale:
       minReplicas: 1
       maxReplicas: 1
