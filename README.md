@@ -23,7 +23,7 @@
 
 Sesame es un bot **público y open source**. Cualquier persona puede añadirlo a su servidor. No hace falta instalar nada: pulsa **Invitar a Sesame**, elige el servidor y usa `/play` o `!help`.
 
-- Reproduce audio: busca por nombre (SoundCloud y, si falla, YouTube) o acepta enlaces de SoundCloud, YouTube, Spotify (canciones) y Bandcamp.
+- Reproduce audio: busca por nombre en SoundCloud (descarta adelantos de 30 s y versiones con DRM, elige la que más se parece) y, si falla, YouTube o acepta enlaces de SoundCloud, YouTube, Spotify (canciones) y Bandcamp.
 - Lee el chat en voz alta (`!tts_on`) y **atenúa** la canción mientras habla.
 - Cola, volumen, skip y auto-salida si el canal se queda vacío.
 - Comandos con `!` y con `/`.
@@ -99,9 +99,14 @@ Pasos: New project → GitHub `sesame-bot` → variable `DISCORD_TOKEN` → 1 r�
 
 Todos los límites se cambian con variables de entorno (ver `sesame/config.py` y `azure-containerapp.yaml`).
 
-## Actualizar en Azure
+## CI/CD
 
-Cada push a `main` pasa los tests y publica `ghcr.io/molxno/sesame-bot:v<número>` (el número de la ejecución en **Actions**). En Azure: **Containers → Properties → Image and tag** = `molxno/sesame-bot:v<número>` → **Save as a new revision**. En el Log stream verás `versión=v<número>`.
+Un solo workflow (`.github/workflows/ci-cd.yml`), con Git Flow ([CONTRIBUTING.md](CONTRIBUTING.md)):
+
+1. **PR** a `develop` o `main`: valida el nombre de la rama y corre los tests.
+2. **Merge a `main`**: tests → publica `ghcr.io/molxno/sesame-bot:v<número>` → **despliega solo en Azure** (revisión `sesame--v<número>-1`).
+
+El despliegue usa OIDC (sin contraseñas guardadas). Configuración única: ejecuta `scripts/azure-setup-cicd.sh` en Azure Cloud Shell y crea las 3 variables que imprime en **Settings → Secrets and variables → Actions → Variables**. Mientras no existan, el pipeline publica la imagen pero no despliega.
 
 ## Desarrollo
 

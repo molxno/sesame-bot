@@ -1,9 +1,0 @@
-name: diag
-on: push
-jobs:
-  d:
-    if: github.ref == 'refs/heads/busqueda'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: pip install -q yt-dlp && python diag.py
