@@ -28,6 +28,11 @@ jobs:
           context: .
           push: true
           labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          build-args: |
+            SESAME_VERSION=v${{ github.run_number }}
+          # v<número> = el número de la ejecución en la pestaña Actions (#5 -> v5).
+          # Usa ese tag en Azure: con "latest" Azure puede reutilizar una imagen vieja en caché.
           tags: |
             ghcr.io/molxno/sesame-bot:latest
+            ghcr.io/molxno/sesame-bot:v${{ github.run_number }}
             ghcr.io/molxno/sesame-bot:${{ github.sha }}

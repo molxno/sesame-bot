@@ -840,7 +840,7 @@ async def help_cmd(ctx: commands.Context):
             scopes=("bot", "applications.commands"),
         )
         embed.add_field(name="Invitar", value=f"[Añadir Sesame a un servidor]({invite})", inline=False)
-    embed.set_footer(text="También con /  ·  open source")
+    embed.set_footer(text=f"También con /  ·  open source  ·  {os.getenv('SESAME_VERSION', 'dev')}")
     await ctx.send(embed=embed)
 
 
@@ -966,8 +966,9 @@ async def on_ready():
     except ImportError:
         davey_ver = "no instalado"
     log.info(
-        "Conectado como %s | python=%s discord.py=%s davey=%s opus_loaded=%s",
+        "Conectado como %s | versión=%s | python=%s discord.py=%s davey=%s opus_loaded=%s",
         bot.user,
+        os.getenv("SESAME_VERSION", "dev"),
         sys.version.split()[0],
         discord.__version__,
         davey_ver,
