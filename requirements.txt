@@ -3,5 +3,5 @@ discord.py[voice]>=2.7.1,<2.8
 gTTS>=2.5,<3
 # yt-dlp sin tope: los sitios cambian a menudo y conviene la última versión.
 yt-dlp
-python-dotenv>=1.0,<2
+python-dotenv>=1.2.4,<2
 audioop-lts; python_version >= "3.13"
