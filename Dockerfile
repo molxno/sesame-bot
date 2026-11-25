@@ -12,4 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY bot.py .
 
 ENV PYTHONUNBUFFERED=1
-CMD ["python", "bot.py"]
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV LOG_LEVEL=INFO
+CMD ["python", "-O", "bot.py"]

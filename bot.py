@@ -60,20 +60,25 @@ class _RedactTokenFilter(logging.Filter):
 def setup_logging() -> None:
     redact = _RedactTokenFilter()
     fmt = logging.Formatter("%(asctime)s %(levelname)-8s %(name)s: %(message)s")
-
-    file_handler = logging.FileHandler("bot.log", encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(fmt)
-    file_handler.addFilter(redact)
+    production = bool(os.getenv("RAILWAY_ENVIRONMENT"))
+    level_name = os.getenv("LOG_LEVEL", "INFO" if production else "DEBUG").upper()
+    level = getattr(logging, level_name, logging.INFO)
+    voice_level = logging.DEBUG if not production else logging.INFO
 
     root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
+    root.setLevel(level)
     root.handlers.clear()
-    root.addHandler(file_handler)
+
+    if not production:
+        file_handler = logging.FileHandler("bot.log", encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(fmt)
+        file_handler.addFilter(redact)
+        root.addHandler(file_handler)
 
     if sys.stdout is not None:
         console = logging.StreamHandler()
-        console.setLevel(logging.INFO)
+        console.setLevel(logging.INFO if not production else level)
         console.setFormatter(fmt)
         console.addFilter(redact)
         root.addHandler(console)
@@ -81,9 +86,9 @@ def setup_logging() -> None:
     logging.getLogger("discord").setLevel(logging.INFO)
     logging.getLogger("discord.http").setLevel(logging.INFO)
     logging.getLogger("discord.gateway").setLevel(logging.INFO)
-    logging.getLogger("discord.voice_state").setLevel(logging.DEBUG)
-    logging.getLogger("discord.voice_client").setLevel(logging.DEBUG)
-    logging.getLogger("discord.player").setLevel(logging.DEBUG)
+    logging.getLogger("discord.voice_state").setLevel(voice_level)
+    logging.getLogger("discord.voice_client").setLevel(voice_level)
+    logging.getLogger("discord.player").setLevel(voice_level)
 
 
 def _patch_davey_020() -> None:
