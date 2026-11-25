@@ -1,7 +1,8 @@
 # CI/CD de Sesame (Git Flow)
 #   PR -> develop/main : valida la rama (gitflow) y corre los tests
 #   push a develop     : tests
-#   push a main        : tests -> publica la imagen v1.<número> en GHCR -> despliega en Azure
+#   push a main        : tests -> imagen v1.<número> en GHCR + Release de GitHub -> despliega en Azure
+#   La misma versión identifica la Release, el tag de git, la imagen y la revisión de Azure.
 name: CI/CD
 
 on:
@@ -57,7 +58,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      contents: write   # crear el tag y la Release
       packages: write
     outputs:
       version: v1.${{ github.run_number }}
@@ -78,6 +79,13 @@ jobs:
           tags: |
             ghcr.io/molxno/sesame-bot:latest
             ghcr.io/molxno/sesame-bot:v1.${{ github.run_number }}
+      - name: Publicar Release v1.${{ github.run_number }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: v1.${{ github.run_number }}
+        run: |
+          gh release create "$VERSION" --target "$GITHUB_SHA" --title "Sesame $VERSION" --generate-notes \
+            --notes "Imagen: \`ghcr.io/molxno/sesame-bot:$VERSION\` · Revisión de Azure: \`sesame--v1-${{ github.run_number }}-1\`"
 
   deploy:
     needs: publish
