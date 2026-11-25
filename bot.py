@@ -27,6 +27,22 @@ TTS_MAX_CHARS = 200
 TTS_DUCK = 0.22  # volumen de la música (0-1) mientras habla el TTS
 PREFIX = "!"
 EMPTY_LEAVE_DELAY = 15  # segundos solo en el canal antes de salir
+
+# --- Límites de consumo (protegen el crédito de Azure) ---
+# Cada límite se puede ajustar con una variable de entorno del mismo nombre.
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.getenv(name, default)))
+    except ValueError:
+        return default
+
+MAX_VOICE_GUILDS = _env_int("MAX_VOICE_GUILDS", 3)        # servidores con voz activa a la vez
+MAX_QUEUE = _env_int("MAX_QUEUE", 20)                     # canciones en cola por servidor
+MAX_TRACK_SECONDS = _env_int("MAX_TRACK_SECONDS", 900)    # duración máxima por canción (15 min)
+IDLE_LEAVE_SECONDS = _env_int("IDLE_LEAVE_SECONDS", 300)  # sale de voz tras 5 min sin sonar nada
+MAX_TTS_PENDING = _env_int("MAX_TTS_PENDING", 5)          # mensajes de TTS en espera por servidor
+PLAY_COOLDOWN_SECONDS = _env_int("PLAY_COOLDOWN_SECONDS", 5)
+DAVE_READY_TIMEOUT = 6  # segundos máximos esperando el cifrado de voz antes de emitir
 BOT_COLOR = 0xC4A35A
 BOT_PERMISSIONS = discord.Permissions(
     view_channel=True,
@@ -178,12 +194,30 @@ intents.message_content = True
 intents.voice_states = True
 bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
+async def _wait_dave_ready(vc: discord.VoiceClient, timeout: float = DAVE_READY_TIMEOUT) -> None:
+    """Espera a que el cifrado E2EE (DAVE) esté listo; si se emite antes, Discord descarta el audio."""
+    conn = getattr(vc, "_connection", None)
+    if conn is None or not getattr(conn, "dave_protocol_version", 0):
+        return
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
+        session = getattr(conn, "dave_session", None)
+        if session is not None and getattr(session, "ready", False) and getattr(conn, "can_encrypt", False):
+            return
+        await asyncio.sleep(0.25)
+    log.warning("DAVE no quedó listo en %ss; emito de todos modos: %s", timeout, _dave_snapshot(vc))
+
+
 YDL_OPTS = {
     "format": "bestaudio/best",
     "noplaylist": True,
     "quiet": True,
-    "default_search": "ytsearch1",
+    # YouTube bloquea las IPs de servidores en la nube ("Sign in to confirm you're not a bot"),
+    # así que las búsquedas por texto van a SoundCloud.
+    "default_search": "scsearch1",
     "no_warnings": True,
+    "socket_timeout": 15,
     "cachedir": False,
     "concurrent_fragment_downloads": 1,
 }
@@ -303,12 +337,18 @@ class GuildPlayer:
         with self._tts_lock:
             return bool(self.tts_pending) or (self._mixer is not None and self._mixer._tts is not None)
 
-    def enqueue(self, track: Track) -> None:
+    def enqueue(self, track: Track) -> bool:
+        if track.kind == "music" and len(self.queue) >= MAX_QUEUE:
+            return False
         self.queue.append(track)
         self._wakeup.set()
+        return True
 
     def speak(self, source: discord.AudioSource) -> None:
         with self._tts_lock:
+            if len(self.tts_pending) >= MAX_TTS_PENDING:
+                source.cleanup()
+                return
             self.tts_pending.append(source)
         vc = self.guild.voice_client
         if vc is None or not (vc.is_playing() or vc.is_paused()):
@@ -329,7 +369,16 @@ class GuildPlayer:
                 vc = self.guild.voice_client
                 if not self.queue and not self._has_tts():
                     self.now_playing = None
-                    await self._wakeup.wait()
+                    try:
+                        await asyncio.wait_for(self._wakeup.wait(), timeout=IDLE_LEAVE_SECONDS)
+                    except asyncio.TimeoutError:
+                        current = self.guild.voice_client
+                        if current is not None and not (current.is_playing() or current.is_paused()):
+                            log.info("Sin actividad %ss en guild=%s, salgo de voz", IDLE_LEAVE_SECONDS, self.guild.id)
+                            await self._announce("Me salgo del canal de voz por inactividad.")
+                            asyncio.create_task(cleanup_guild(self.guild, disconnect=True))
+                            return
+                        continue
                     self._wakeup.clear()
                     continue
                 if vc is None or not vc.is_connected():
@@ -361,6 +410,7 @@ class GuildPlayer:
                         log.error("Error de reproducción: %s", error, exc_info=error)
                     loop.call_soon_threadsafe(done.set)
 
+                await _wait_dave_ready(vc)
                 try:
                     log.info("vc.play() guild=%s %s", self.guild.id, _dave_snapshot(vc))
                     vc.play(wrapped, after=_after)
@@ -436,8 +486,13 @@ async def ensure_voice(ctx: commands.Context) -> discord.VoiceClient | None:
     assert ctx.guild is not None
     vc = ctx.guild.voice_client
     if vc is None:
+        if len(bot.voice_clients) >= MAX_VOICE_GUILDS:
+            log.warning("Límite de voz alcanzado (%s servidores)", MAX_VOICE_GUILDS)
+            await ctx.send("Estoy ocupado en otros servidores ahora mismo. Inténtalo en un rato.")
+            return None
         vc = await ctx.author.voice.channel.connect()
         log.info("Conectado a voz %s: %s", ctx.author.voice.channel, _dave_snapshot(vc))
+        get_player(ctx.guild)  # arranca el temporizador de inactividad
     elif vc.channel != ctx.author.voice.channel:
         await vc.move_to(ctx.author.voice.channel)
         log.info("Movido a voz %s: %s", ctx.author.voice.channel, _dave_snapshot(vc))
@@ -451,6 +506,17 @@ def build_tts_source(text: str) -> discord.FFmpegPCMAudio:
     return discord.FFmpegPCMAudio(fp, pipe=True)
 
 
+class TrackTooLong(Exception):
+    def __init__(self, seconds: int):
+        super().__init__(seconds)
+        self.seconds = seconds
+
+
+def _is_youtube(query: str) -> bool:
+    q = query.lower()
+    return "youtube.com/" in q or "youtu.be/" in q or "music.youtube.com/" in q
+
+
 def extract_audio(query: str) -> tuple[str, str, dict[str, str]]:
     with yt_dlp.YoutubeDL(YDL_OPTS) as ydl:
         info = ydl.extract_info(query, download=False)
@@ -461,6 +527,9 @@ def extract_audio(query: str) -> tuple[str, str, dict[str, str]]:
             if not entries:
                 raise RuntimeError("sin resultados")
             info = entries[0]
+        duration = info.get("duration") or 0
+        if duration and duration > MAX_TRACK_SECONDS:
+            raise TrackTooLong(int(duration))
         url = info.get("url")
         if not url:
             raise RuntimeError("sin URL de audio")
@@ -504,6 +573,8 @@ def _humans_in(channel: discord.VoiceChannel | discord.StageChannel | None) -> l
 def _friendly_error(error: BaseException) -> str | None:
     if isinstance(error, commands.CommandNotFound):
         return None
+    if isinstance(error, commands.CommandOnCooldown):
+        return f"Espera {error.retry_after:.0f} s antes de usar ese comando otra vez."
     if isinstance(error, commands.MissingRequiredArgument):
         return "Falta un argumento. Prueba `!help` o escribe `/`."
     if isinstance(error, commands.BadArgument):
@@ -525,7 +596,20 @@ def _friendly_error(error: BaseException) -> str | None:
 
 @bot.hybrid_command(name="play", description="Reproduce una canción (búsqueda o enlace)")
 @commands.guild_only()
+@commands.cooldown(1, PLAY_COOLDOWN_SECONDS, commands.BucketType.user)
 async def play(ctx: commands.Context, *, query: str):
+    query = query.strip()[:300]
+    if _is_youtube(query):
+        await ctx.send(
+            "YouTube bloquea a los bots en servidores en la nube. "
+            "Escribe el nombre de la canción (busco en SoundCloud) o pega un enlace de SoundCloud."
+        )
+        return
+    assert ctx.guild is not None
+    existing = players.get(ctx.guild.id)
+    if existing is not None and len(existing.queue) >= MAX_QUEUE:
+        await ctx.send(f"La cola está llena ({MAX_QUEUE} canciones). Espera a que avance.")
+        return
     if await ensure_voice(ctx) is None:
         return
     try:
@@ -535,14 +619,18 @@ async def play(ctx: commands.Context, *, query: str):
         else:
             async with ctx.typing():
                 url, title, headers = await asyncio.to_thread(extract_audio, query)
+    except TrackTooLong as exc:
+        await ctx.send(f"Esa pista dura {exc.seconds // 60} min; el máximo es {MAX_TRACK_SECONDS // 60} min.")
+        return
     except Exception as exc:
         log.info("extract_audio falló: %s", exc)
-        await ctx.send("No pude obtener ese audio.")
+        await ctx.send("No encontré ese audio. Prueba con otro nombre o un enlace de SoundCloud.")
         return
-    assert ctx.guild is not None
     player = get_player(ctx.guild)
     player.announce_channel_id = ctx.channel.id
-    player.enqueue(Track(title=title, kind="music", make_source=make_ffmpeg(url, headers)))
+    if not player.enqueue(Track(title=title, kind="music", make_source=make_ffmpeg(url, headers))):
+        await ctx.send(f"La cola está llena ({MAX_QUEUE} canciones).")
+        return
     await ctx.send(f"En cola: **{title}**")
 
 
@@ -659,7 +747,7 @@ async def help_cmd(ctx: commands.Context):
     embed.add_field(
         name="Música",
         value=(
-            "`!play <canción o enlace>` — encola y reproduce\n"
+            "`!play <canción>` — busca en SoundCloud y reproduce (no YouTube)\n"
             "`!skip` / `!next` — siguiente de la cola\n"
             "`!stop` — para todo y vacía la cola\n"
             "`!queue` · `!nowplaying` · `!volume <0-100>`\n"
