@@ -116,6 +116,11 @@ Estructura: `sesame/config.py` (límites), `resolver.py` (fuentes y lista blanca
 
 discord.py 2.7.1 no llama las transiciones de davey 0.2.0 (cifrado de voz DAVE). `sesame/dave.py` incluye un puente para eso.
 
+## Legal
+
+- [Condiciones del Servicio](TERMS.md)
+- [Política de Privacidad](PRIVACY.md)
+
 ## Licencia
 
 [MIT](LICENSE) © 2026 [molxno](https://github.com/molxno)

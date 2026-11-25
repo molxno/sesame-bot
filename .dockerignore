@@ -14,3 +14,5 @@ run_bot.bat
 railway.json
 azure-containerapp.yaml
 requirements-dev.txt
+TERMS.md
+PRIVACY.md
