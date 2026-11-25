@@ -2,7 +2,7 @@
 #   PR -> develop/main : valida la rama (gitflow) y corre los tests
 #   push a develop     : tests
 #   push a main        : tests -> imagen v1.<número> en GHCR + Release de GitHub -> despliega en Azure
-#   La misma versión identifica la Release, el tag de git, la imagen y la revisión de Azure.
+#   La misma versión identifica la Release, el tag de git y la imagen que corre en Azure.
 name: CI/CD
 
 on:
@@ -85,7 +85,7 @@ jobs:
           VERSION: v1.${{ github.run_number }}
         run: |
           gh release create "$VERSION" --target "$GITHUB_SHA" --title "Sesame $VERSION" --generate-notes \
-            --notes "Imagen: \`ghcr.io/molxno/sesame-bot:$VERSION\` · Revisión de Azure: \`sesame--v1-${{ github.run_number }}-1\`"
+            --notes "Imagen: \`ghcr.io/molxno/sesame-bot:$VERSION\` (desplegada en Azure Container Apps \`sesame\`)"
 
   deploy:
     needs: publish
@@ -107,10 +107,8 @@ jobs:
       - name: Desplegar ${{ needs.publish.outputs.version }}
         env:
           VERSION: ${{ needs.publish.outputs.version }}
-          ATTEMPT: ${{ github.run_attempt }}
         run: |
           az extension add --name containerapp --upgrade --yes --only-show-errors
           az containerapp update --resource-group sesame --name sesame \
             --image "ghcr.io/molxno/sesame-bot:$VERSION" \
-            --revision-suffix "v1-${{ github.run_number }}-$ATTEMPT" \
-            --query "{revision:properties.latestRevisionName, estado:properties.provisioningState}" -o table
+            --query "{revision:properties.latestRevisionName, imagen:properties.template.containers[0].image, estado:properties.provisioningState}" -o table
