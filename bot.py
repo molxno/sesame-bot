@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import logging
 import os
 import shlex
@@ -9,6 +10,8 @@ import threading
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 import audioop
 import discord
@@ -517,24 +520,96 @@ def _is_youtube(query: str) -> bool:
     return "youtube.com/" in q or "youtu.be/" in q or "music.youtube.com/" in q
 
 
-def extract_audio(query: str) -> tuple[str, str, dict[str, str]]:
+def _is_spotify(query: str) -> bool:
+    return "open.spotify.com/" in query.lower() or query.lower().startswith("spotify:")
+
+
+def _is_url(query: str) -> bool:
+    return query.lower().startswith(("http://", "https://"))
+
+
+def _oembed_title(query: str) -> str | None:
+    """Saca 'artista - canción' de un enlace de YouTube o Spotify sin descargar nada (oEmbed público)."""
+    if _is_youtube(query):
+        endpoint = f"https://www.youtube.com/oembed?format=json&url={quote(query, safe='')}"
+    elif _is_spotify(query):
+        endpoint = f"https://open.spotify.com/oembed?url={quote(query, safe='')}"
+    else:
+        return None
+    try:
+        req = Request(endpoint, headers={"User-Agent": "Mozilla/5.0 SesameBot"})
+        with urlopen(req, timeout=8) as resp:
+            data = json.loads(resp.read(200_000).decode("utf-8", errors="replace"))
+    except Exception as exc:
+        log.info("oEmbed falló para %s: %s", query, exc)
+        return None
+    title = (data.get("title") or "").strip()
+    author = (data.get("author_name") or "").strip()
+    if author and author.lower() not in title.lower() and not author.lower().endswith(" - topic"):
+        title = f"{author} {title}"
+    return title[:200] or None
+
+
+def _ydl_first(target: str) -> tuple[str, str, dict[str, str]]:
     with yt_dlp.YoutubeDL(YDL_OPTS) as ydl:
-        info = ydl.extract_info(query, download=False)
-        if info is None:
-            raise RuntimeError("yt-dlp no devolvió resultado")
-        if "entries" in info:
-            entries = [e for e in info["entries"] if e]
-            if not entries:
-                raise RuntimeError("sin resultados")
-            info = entries[0]
-        duration = info.get("duration") or 0
-        if duration and duration > MAX_TRACK_SECONDS:
-            raise TrackTooLong(int(duration))
-        url = info.get("url")
-        if not url:
-            raise RuntimeError("sin URL de audio")
-        headers = dict(info.get("http_headers") or {})
-        return url, info.get("title") or "Sin título", headers
+        info = ydl.extract_info(target, download=False)
+    if info is None:
+        raise RuntimeError("yt-dlp no devolvió resultado")
+    if "entries" in info:
+        entries = [e for e in info["entries"] if e]
+        if not entries:
+            raise RuntimeError("sin resultados")
+        info = entries[0]
+    duration = info.get("duration") or 0
+    if duration and duration > MAX_TRACK_SECONDS:
+        raise TrackTooLong(int(duration))
+    url = info.get("url")
+    if not url:
+        raise RuntimeError("sin URL de audio")
+    headers = dict(info.get("http_headers") or {})
+    return url, info.get("title") or "Sin título", headers
+
+
+def extract_audio(query: str) -> tuple[str, str, dict[str, str], str]:
+    """Prueba varias fuentes en orden y devuelve (url, título, headers, fuente).
+
+    - Texto: SoundCloud -> YouTube.
+    - Enlace de YouTube: el propio enlace -> buscar su título en SoundCloud.
+    - Enlace de Spotify (no se puede extraer audio): buscar su título en SoundCloud -> YouTube.
+    - Otros enlaces (SoundCloud, Bandcamp, mp3...): el enlace directo.
+    """
+    attempts: list[tuple[str, str]] = []
+    if _is_youtube(query) or _is_spotify(query):
+        if _is_youtube(query):
+            attempts.append(("YouTube", query))
+        title = _oembed_title(query)
+        if title:
+            attempts.append(("SoundCloud", f"scsearch1:{title}"))
+            if _is_spotify(query):
+                attempts.append(("YouTube", f"ytsearch1:{title}"))
+    elif _is_url(query):
+        attempts.append(("enlace", query))
+    else:
+        attempts.append(("SoundCloud", f"scsearch1:{query}"))
+        attempts.append(("YouTube", f"ytsearch1:{query}"))
+
+    if not attempts:
+        raise RuntimeError("no pude leer el título de ese enlace")
+    too_long: TrackTooLong | None = None
+    last_error: Exception | None = None
+    for source, target in attempts:
+        try:
+            url, title, headers = _ydl_first(target)
+            log.info("Audio encontrado en %s: %s", source, title)
+            return url, title, headers, source
+        except TrackTooLong as exc:
+            too_long = exc
+        except Exception as exc:
+            last_error = exc
+            log.info("Fuente %s falló (%s): %s", source, target, str(exc)[:200])
+    if too_long is not None:
+        raise too_long
+    raise RuntimeError(f"ninguna fuente funcionó: {last_error}")
 
 
 def make_ffmpeg(url: str, headers: dict[str, str] | None = None) -> Callable[[], discord.AudioSource]:
@@ -599,12 +674,6 @@ def _friendly_error(error: BaseException) -> str | None:
 @commands.cooldown(1, PLAY_COOLDOWN_SECONDS, commands.BucketType.user)
 async def play(ctx: commands.Context, *, query: str):
     query = query.strip()[:300]
-    if _is_youtube(query):
-        await ctx.send(
-            "YouTube bloquea a los bots en servidores en la nube. "
-            "Escribe el nombre de la canción (busco en SoundCloud) o pega un enlace de SoundCloud."
-        )
-        return
     assert ctx.guild is not None
     existing = players.get(ctx.guild.id)
     if existing is not None and len(existing.queue) >= MAX_QUEUE:
@@ -615,23 +684,26 @@ async def play(ctx: commands.Context, *, query: str):
     try:
         if ctx.interaction is not None:
             await ctx.defer()
-            url, title, headers = await asyncio.to_thread(extract_audio, query)
+            url, title, headers, source = await asyncio.to_thread(extract_audio, query)
         else:
             async with ctx.typing():
-                url, title, headers = await asyncio.to_thread(extract_audio, query)
+                url, title, headers, source = await asyncio.to_thread(extract_audio, query)
     except TrackTooLong as exc:
         await ctx.send(f"Esa pista dura {exc.seconds // 60} min; el máximo es {MAX_TRACK_SECONDS // 60} min.")
         return
     except Exception as exc:
         log.info("extract_audio falló: %s", exc)
-        await ctx.send("No encontré ese audio. Prueba con otro nombre o un enlace de SoundCloud.")
+        await ctx.send(
+            "No encontré ese audio en SoundCloud ni en YouTube. Prueba con *artista + canción* "
+            "o con un enlace de SoundCloud."
+        )
         return
     player = get_player(ctx.guild)
     player.announce_channel_id = ctx.channel.id
     if not player.enqueue(Track(title=title, kind="music", make_source=make_ffmpeg(url, headers))):
         await ctx.send(f"La cola está llena ({MAX_QUEUE} canciones).")
         return
-    await ctx.send(f"En cola: **{title}**")
+    await ctx.send(f"En cola: **{title}** · _{source}_")
 
 
 @bot.hybrid_command(name="skip", description="Salta a la siguiente canción de la cola", aliases=["next", "siguiente"])
@@ -747,7 +819,7 @@ async def help_cmd(ctx: commands.Context):
     embed.add_field(
         name="Música",
         value=(
-            "`!play <canción>` — busca en SoundCloud y reproduce (no YouTube)\n"
+            "`!play <canción o enlace>` — SoundCloud, YouTube o Spotify (prueba varias fuentes)\n"
             "`!skip` / `!next` — siguiente de la cola\n"
             "`!stop` — para todo y vacía la cola\n"
             "`!queue` · `!nowplaying` · `!volume <0-100>`\n"
